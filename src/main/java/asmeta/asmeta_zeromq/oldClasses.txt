@@ -1,0 +1,210 @@
+package asmeta.asmeta_zeromq;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.asmeta.runtime_container.RunOutput;
+import org.asmeta.runtime_container.SimulationContainer;
+import org.zeromq.ZContext;
+import org.zeromq.ZMQ;
+
+import com.google.gson.Gson;
+
+public class ProducerApp {
+
+    public static void main(String[] args) {
+        SimulationContainer sim = new SimulationContainer();
+        sim.init(10);
+
+        String modelPath = "src/main/resources/models/producer.asm";
+        int asmId = sim.startExecution(modelPath);
+        System.out.println("Id is :" + asmId);
+
+        Gson gson = new Gson();
+
+        try (ZContext context = new ZContext()) {
+            ZMQ.Socket publisher = context.createSocket(ZMQ.PUB);
+            publisher.bind("tcp://*:5556"); // Publish to consumer
+
+            ZMQ.Socket subscriber = context.createSocket(ZMQ.SUB);
+            subscriber.bind("tcp://*:5555"); // Listen for external trigger
+            subscriber.subscribe("".getBytes());
+
+            System.out.println("[ProducerApp] Listening on 5555, Publishing on 5556");
+
+            while (!Thread.currentThread().isInterrupted()) {
+                String message = subscriber.recvStr(0).trim();
+                System.out.println("[ProducerApp] Received: " + message);
+
+                Map<String, String> monitored = gson.fromJson(message, Map.class);
+                RunOutput output = sim.runStep(asmId, monitored);
+
+                Map<String, Object> response = new HashMap<>();
+                response.put("id", asmId);
+                response.put("monitoredVariables", monitored);
+                response.put("controlledValues", output.getControlledvalues());
+
+                String json = gson.toJson(response);
+                System.out.println("[ProducerApp] Sending: " + json);
+                publisher.send(json);
+            }
+        }
+    }
+}
+
+
+--------
+
+
+package asmeta.asmeta_zeromq;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.asmeta.runtime_container.RunOutput;
+import org.asmeta.runtime_container.SimulationContainer;
+import org.zeromq.ZContext;
+import org.zeromq.ZMQ;
+
+import com.google.gson.Gson;
+
+public class ConsumerApp {
+
+    public static void main(String[] args) {
+        SimulationContainer sim = new SimulationContainer();
+        sim.init(10);
+
+        String modelPath = "src/main/resources/models/consumer.asm";
+        int asmId = sim.startExecution(modelPath);
+
+        Gson gson = new Gson();
+
+        try (ZContext context = new ZContext()) {
+            ZMQ.Socket publisher = context.createSocket(ZMQ.PUB);
+            publisher.bind("tcp://*:5557"); // to respond to other system
+
+            ZMQ.Socket subscriber = context.createSocket(ZMQ.SUB);
+            subscriber.connect("tcp://localhost:5556"); // Listen to Producer
+            subscriber.subscribe("".getBytes());
+
+            System.out.println("[ConsumerApp] Listening on 5556, Publishing on 5557");
+
+            while (!Thread.currentThread().isInterrupted()) {
+                String message = subscriber.recvStr(0).trim();
+                System.out.println("[ConsumerApp] Received: " + message);
+
+                Map<String, Object> received = gson.fromJson(message, Map.class);
+                @SuppressWarnings("unchecked")
+                Map<String, String> monitoredVars = (Map<String, String>) received.get("controlledValues");
+
+                // "status" from Producer is passed as "incomingStatus" to Consumer
+                Map<String, String> mappedMonitored = new HashMap<>();
+                if (monitoredVars.containsKey("status")) {
+                    mappedMonitored.put("incomingStatus", monitoredVars.get("status"));
+                }
+
+                RunOutput output = sim.runStep(asmId, mappedMonitored);
+
+                Map<String, Object> response = new HashMap<>();
+                response.put("id", asmId);
+                response.put("monitoredVariables", mappedMonitored);
+                response.put("controlledValues", output.getControlledvalues());
+
+                String json = gson.toJson(response);
+                System.out.println("[ConsumerApp] Sending: " + json);
+                publisher.send(json);
+            }
+        }
+    }
+}
+
+// mvn exec:java -Dexec.mainClass=asmeta.asmeta_zeromq.ConsumerApp
+// mvn exec:java -Dexec.mainClass=asmeta.asmeta_zeromq.ProducerApp
+
+
+
+------------
+
+package asmeta.asmeta_zeromq;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.zeromq.ZContext;
+import org.zeromq.ZMQ;
+
+import com.google.gson.Gson;
+
+@SpringBootTest(classes=AsmetaZeromqApplication.class)
+class AsmetaZeromqApplicationTests {
+
+	private final Gson gson = new Gson();
+
+	@Test
+	void testRunningModelsAction() {
+		try (ZContext context = new ZContext()) {
+			// request in json format
+			// String requestJson = gson.toJson(Map.of("action", "start", "name", "LIFT.asm"));
+			// String requestJson = gson.toJson(Map.of("action", "start", "name", "railroadGate.asm"));
+			// String requestJson = gson.toJson(Map.of("action", "start", "name", "producer.asm"));
+			// String requestJson = gson.toJson(Map.of("action", "running-models"));
+			ZMQ.Socket publisher = context.createSocket(ZMQ.PUB);
+            publisher.connect("tcp://localhost:5555");
+
+            // Create SUB socket for receiving responses
+            ZMQ.Socket subscriber = context.createSocket(ZMQ.SUB);
+            subscriber.connect("tcp://localhost:5556");
+            subscriber.subscribe("".getBytes(ZMQ.CHARSET)); // Subscribe to all messages
+            // Can subscribe to specific messages
+            // subscriber.subscribe("model-list".getBytes(ZMQ.CHARSET));
+
+            // Wait for the connection
+            Thread.sleep(100);
+
+            // Request in JSON format
+            // String requestJson = gson.toJson(Map.of("action", "model-list"));
+            
+            // Map<String, String> monitoredVars = new HashMap<>();
+            // monitoredVars.put("lightMon", "OFF");
+            // monitoredVars.put("gateMon", "OPENED");
+            // monitoredVars.put("event", "GATE");
+            // String requestJson = gson.toJson(Map.of(
+            //     "action", "step", 
+            //     "id", 1, 
+            //     "monitoredVariables", monitoredVars
+            // ));
+            
+            // Trigger msg
+            Map<String, String> monitored = new HashMap<>();
+            monitored.put("trigger", "1");
+            String jsonMessage = gson.toJson(monitored);
+
+            publisher.send(jsonMessage);
+            System.out.println("Sent: " + jsonMessage);
+            
+            // Send the request
+            // publisher.send(requestJson);
+            // System.out.println("Sent request: " + requestJson);
+
+            // Wait for and receive response
+            String respJson = subscriber.recvStr();
+            System.out.println("Received response: " + respJson);
+            Map<?, ?> response = gson.fromJson(respJson, Map.class);
+
+            // Verify response
+            // assertTrue(response.containsKey("models"));
+
+			// assertTrue(response.containsKey("id"));
+			// assertTrue(response.containsKey("models"));
+			// assertTrue(response.containsKey("runOutput"));
+			// assertTrue(response.containsKey("monitored"));
+			assertTrue(response.containsKey("controlledValues"));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+}
