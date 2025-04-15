@@ -56,13 +56,7 @@ public class zeroMQWrapper {
             }
             properties.load(input);
             
-            // Retrieve properties
-            // modelPath = properties.getProperty(RUNTIME_MODEL_PATH);
-            // pubAddress = properties.getProperty(ZMQ_PUB_SOCKET);
-            // subAddress = properties.getProperty(ZMQ_SUB_SOCKET);
-            
             if(properties.getProperty(RUNTIME_MODEL_PATH) == null || properties.getProperty(ZMQ_PUB_SOCKET) == null || properties.getProperty(ZMQ_SUB_SOCKET) == null || properties.getProperty(ZMQ_REQUIRED_VARS) == null){
-                // System.err.println("[zmqWrapper] ERROR Some parameters are missing, closing...");
                 throw new NullPointerException("ERROR Some parameters are missing, closing...");
             }
 
@@ -95,6 +89,7 @@ public class zeroMQWrapper {
             throw new Exception("Starting ASM model failed: negative id received ( " + asmId + " )");
         }
         System.out.println("[zmqWrapper] Started ASM Model successfully! Model path: " + modelPath + "with ID: " + asmId);
+        System.out.println("[zmqWrapper] Monitored for model with ID: " + asmId + ": " + sim.getMonitored(modelPath) );
         return asmId;
     }
 
@@ -142,12 +137,9 @@ public class zeroMQWrapper {
         return currentMonitoredValues.keySet().containsAll(requiredVars);
     }
 
-    // TODO: change from output get controlled to get ouput
     private void handlePublisherMessages(RunOutput output, Map<String, String> monitoredForStep) {
         Map<String, Object> response = new HashMap<>();
-        response.put("id", asmId);
-        response.put("monitoredVariables", monitoredForStep);
-        response.put("controlledValues", output.getControlledvalues());
+        response.put("outputValues", output.getOutvalues());
 
         String jsonResponse = gson.toJson(response);
         System.out.println("[zmqWrapper] Publishing: " + jsonResponse);
@@ -187,7 +179,7 @@ public class zeroMQWrapper {
                         
                         // Run a step
                         RunOutput output = sim.runStep(asmId, monitoredForStep);
-                        System.out.println("[zmqWrapper] ASM step executed. Output: " + output.getControlledvalues());
+                        System.out.println("[zmqWrapper] ASM step executed. Output: " + output.getOutvalues());
                         
                         
                         // handle publish section

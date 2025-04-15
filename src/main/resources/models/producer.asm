@@ -4,7 +4,7 @@ import ../libraries/StandardLibrary
 
 signature:
     enum domain StatusDomain = {IDLE | HELLO_WORLD}
-    dynamic controlled status: StatusDomain
+    dynamic out status: StatusDomain
     dynamic monitored trigger: Integer
 
 definitions:

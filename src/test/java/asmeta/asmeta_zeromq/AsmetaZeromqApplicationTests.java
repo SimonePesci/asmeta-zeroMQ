@@ -52,7 +52,9 @@ class AsmetaZeromqApplicationTests {
             
             // Trigger msg
             Map<String, String> monitored = new HashMap<>();
-            monitored.put("trigger", "1");
+            monitored.put("input1", "1");
+            monitored.put("input2", "15");
+            monitored.put("reqOp(SUM)", "true");
             String jsonMessage = gson.toJson(monitored);
 
             publisher.send(jsonMessage);
@@ -74,7 +76,7 @@ class AsmetaZeromqApplicationTests {
 			// assertTrue(response.containsKey("models"));
 			// assertTrue(response.containsKey("runOutput"));
 			// assertTrue(response.containsKey("monitored"));
-			assertTrue(response.containsKey("controlledValues"));
+			assertTrue(response.containsKey("outputValues"));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
