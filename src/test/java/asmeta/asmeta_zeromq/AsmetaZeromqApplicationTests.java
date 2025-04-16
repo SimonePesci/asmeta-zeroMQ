@@ -25,17 +25,24 @@ class AsmetaZeromqApplicationTests {
 			// String requestJson = gson.toJson(Map.of("action", "start", "name", "producer.asm"));
 			// String requestJson = gson.toJson(Map.of("action", "running-models"));
 			ZMQ.Socket publisher = context.createSocket(ZMQ.PUB);
-            publisher.connect("tcp://localhost:5555");
+            publisher.connect("tcp://localhost:5559");
 
             // Create SUB socket for receiving responses
             ZMQ.Socket subscriber = context.createSocket(ZMQ.SUB);
             subscriber.connect("tcp://localhost:5556");
             subscriber.subscribe("".getBytes(ZMQ.CHARSET)); // Subscribe to all messages
+			// ZMQ.Socket subscriber = context.createSocket(ZMQ.SUB);
+            // subscriber.connect("tcp://localhost:5555");
+            // subscriber.subscribe("".getBytes(ZMQ.CHARSET)); // Subscribe to all messages
+
+            // // Create SUB socket for receiving responses
+            // ZMQ.Socket publisher = context.createSocket(ZMQ.PUB);
+            // publisher.connect("tcp://localhost:5556");
             // Can subscribe to specific messages
             // subscriber.subscribe("model-list".getBytes(ZMQ.CHARSET));
 
             // Wait for the connection
-            Thread.sleep(100);
+            Thread.sleep(2000);
 
             // Request in JSON format
             // String requestJson = gson.toJson(Map.of("action", "model-list"));
@@ -52,6 +59,8 @@ class AsmetaZeromqApplicationTests {
             
             // Trigger msg
             Map<String, String> monitored = new HashMap<>();
+            monitored.put("trigger", "1");
+            monitored.put("incomingStatus", "HELLO_WORLD");
             monitored.put("input1", "1");
             monitored.put("input2", "15");
             monitored.put("reqOp(SUM)", "true");

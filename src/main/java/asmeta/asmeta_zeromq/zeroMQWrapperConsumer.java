@@ -20,9 +20,9 @@ import org.zeromq.ZMQ;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-public class zeroMQWrapper {
+public class zeroMQWrapperConsumer {
     
-    private static final String CONFIG_FILE_PATH = "/zmq_config.properties";
+    private static final String CONFIG_FILE_PATH = "/zmq_config_consumer.properties";
     private static final String RUNTIME_MODEL_PATH = "RUNTIME_MODEL_PATH";
     private static final String ZMQ_PUB_SOCKET = "ZMQ_PUB_SOCKET";
     private static final String ZMQ_SUB_SOCKET = "ZMQ_SUB_SOCKET";
@@ -39,7 +39,7 @@ public class zeroMQWrapper {
     private Gson gson;
     private Type mapStringStringType;
     
-    public zeroMQWrapper() {
+    public zeroMQWrapperConsumer() {
         this.requiredVars = new HashSet<>();
         this.gson = new Gson();
         this.currentMonitoredValues = new HashMap<>();
@@ -99,9 +99,9 @@ public class zeroMQWrapper {
         System.out.println("[zmqWrapper] Binded to PUB Address: " + pubAddress );
         
         subscriber = context.createSocket(SocketType.SUB);
-        subscriber.bind(subAddress);
+        subscriber.connect(subAddress);
         subscriber.subscribe("".getBytes(ZMQ.CHARSET));
-        System.out.println("[zmqWrapper] Binded to SUB Address: " + subAddress );
+        System.out.println("[zmqWrapper] Connected to SUB Address: " + subAddress );
 
 
         System.out.println("[zmqWrapper] Socket initialization completed, starting loop");
@@ -138,18 +138,11 @@ public class zeroMQWrapper {
     }
 
     private void handlePublisherMessages(RunOutput output, Map<String, String> monitoredForStep) {
-        Map<String, Object> responseConsole = new HashMap<>();
         Map<String, Object> response = new HashMap<>();
-        responseConsole.put("outputValues", output.getOutvalues());
-        response.putAll(output.getOutvalues());
-
-
-        String jsonResponseConsole = gson.toJson(responseConsole);
-        System.out.println("[zmqWrapper] Publishing: " + jsonResponseConsole);
+        response.put("outputValues", output.getOutvalues());
 
         String jsonResponse = gson.toJson(response);
         System.out.println("[zmqWrapper] Publishing: " + jsonResponse);
-
         publisher.send(jsonResponse);
     }
 
@@ -194,22 +187,23 @@ public class zeroMQWrapper {
 
                         currentMonitoredValues.clear();
                         System.err.println("[zmqWrapper] Cleared monitored values, waiting for the next set of values");
-
+                        
                     } else {
-
+                        
                     }
                 }
-
+                
             }
-
+            
             
         } catch (Exception e) {
-
+            System.err.println("[zmqWrapper] ERROR Exception catched, e:" + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     public static void main(String[] args) {
-        zeroMQWrapper wrapper = new zeroMQWrapper();
+        zeroMQWrapperConsumer wrapper = new zeroMQWrapperConsumer();
         wrapper.run();
     }
 }
