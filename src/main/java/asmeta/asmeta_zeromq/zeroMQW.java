@@ -26,6 +26,9 @@ public class zeroMQW {
     // Add a static logger instance
     private static final Logger logger = LogManager.getLogger(zeroMQW.class);
 
+    // Add a static lock object for synchronizing Asmeta calls
+    private static final Object ASMETA_LOCK = new Object();
+
     private final String CONFIG_FILE_PATH;
     private static final String RUNTIME_MODEL_PATH = "RUNTIME_MODEL_PATH";
     private static final String ZMQ_PUB_SOCKET = "ZMQ_PUB_SOCKET";
@@ -35,6 +38,12 @@ public class zeroMQW {
     private ZMQ.Socket publisher;
     private ZMQ.Socket subscriber;
     private Properties properties;
+
+    // Add instance variables to store config and asmId
+    private int asmId;
+    private String modelPath;
+    private String pubAddress;
+    private String subConnectAddresses;
 
     private Set<String> requiredMonitored;
     private Map<String, String> currentMonitoredValues;
@@ -47,7 +56,33 @@ public class zeroMQW {
         this.currentMonitoredValues = new HashMap<>();
         this.mapStringStringType = new TypeToken<Map<String,String>>(){}.getType();
         this.CONFIG_FILE_PATH = config_filepath;
-        logger.info("zeroMQW initialized.");
+        logger.info("zeroMQW initialized for config: {}", config_filepath);
+
+        try {
+            // Configuration section moved from main
+            Properties config = this.loadConfig();
+            this.modelPath = config.getProperty(RUNTIME_MODEL_PATH);
+            this.pubAddress = config.getProperty(ZMQ_PUB_SOCKET);
+            this.subConnectAddresses = config.getProperty(ZMQ_SUB_CONNECT_ADDRESSES, ""); // Default to empty string if null
+
+            // Initialize ASM moved from main
+            this.asmId = this.initializeAsm(this.modelPath);
+
+            // Start the run loop in a new thread
+            Thread runThread = new Thread(this::run); // Use method reference
+            runThread.setName("zeroMQW-RunLoop-" + config_filepath.replace("/", "-")); // Give the thread a descriptive name
+            runThread.start();
+
+            logger.info("zeroMQW instance configured and run loop started for {}", config_filepath);
+
+        } catch (IOException | NullPointerException e) {
+            logger.fatal("CRITICAL ERROR during zeroMQW initialization for {}: {}", config_filepath, e.getMessage(), e);
+            // Depending on requirements, you might want to throw a custom runtime exception here
+            // throw new RuntimeException("Failed to initialize zeroMQW for " + config_filepath, e);
+        } catch (Exception e) { // Catch exception from initializeAsm
+             logger.fatal("CRITICAL ERROR during ASM initialization for {}: {}", config_filepath, e.getMessage(), e);
+             // throw new RuntimeException("Failed to initialize ASM for " + config_filepath, e);
+        }
     }
 
     private Properties loadConfig() throws IOException, NullPointerException {
@@ -202,53 +237,63 @@ public class zeroMQW {
         logger.error("ASM state is UNSAFE after step with input: {}", monitoredForStep);
     }
 
-
-    public void run(int asmId, String pubAddress, String subConnectAddresses) {
+    // Modified run method - no longer takes parameters
+    private void run() {
         try {
-            logger.info("Starting zeroMQW run loop...");
+            logger.info("Starting zeroMQW run loop for config {}...", CONFIG_FILE_PATH);
             try (ZContext context = new ZContext()) {
-                initializeZmqSockets(context, pubAddress, subConnectAddresses);
+                // Use instance variables for addresses
+                initializeZmqSockets(context, this.pubAddress, this.subConnectAddresses);
 
-                logger.info("Entering main loop...");
+                logger.info("Entering main loop for {}...", CONFIG_FILE_PATH);
                 // Start Loop
                 while (!Thread.currentThread().isInterrupted()) {
 
-                    // 1. Handle listen section 
+                    // 1. Handle listen section
                     handleSubscriptionMessages();
 
                     // 2. Check if ready for a step
-                    if (areAllVarsReady()) {
-                        logger.info("All required monitored vars received ({}), proceeding with ASM step.", requiredMonitored);
+                    // if (areAllVarsReady()) {
+                        logger.info("All required monitored vars received and non-null ({}), proceeding with ASM step.", requiredMonitored);
 
-                        // Prepare input for this step
+                        // Prepare input for this step - Create a copy for safety
                         Map<String, String> monitoredForStep = new HashMap<>();
                         for (String key : requiredMonitored) {
+                            // We know the key exists and is not null because of areAllVarsReady()
                             monitoredForStep.put(key, currentMonitoredValues.get(key));
                         }
                         logger.debug("Executing ASM step with monitored input: {}", monitoredForStep);
 
-                        // 3. Run a step
-                        RunOutput output = sim.runStep(asmId, monitoredForStep);
+                        RunOutput output;
+                        // Synchronize the call to runStep to prevent concurrent access issues
+                        synchronized (ASMETA_LOCK) {
+                            logger.trace("Acquired ASMETA_LOCK for runStep (Thread: {})", Thread.currentThread().getName());
+                            // 3. Run a step
+                            // Use instance variable for asmId
+                            output = sim.runStep(this.asmId, monitoredForStep);
+                            logger.trace("Released ASMETA_LOCK after runStep (Thread: {})", Thread.currentThread().getName());
+                        } // End synchronized block
 
                         // 4. Process result and publish
                         if (output.getEsit() == Esit.SAFE){
                             logger.info("ASM step completed successfully (SAFE). Output: {}", output.getOutvalues());
                             handlePublisherMessages(output);
                         } else {
-                            handleUnsafeState(monitoredForStep);                        
+
+                            handleUnsafeState(monitoredForStep);                       
                         }
 
                         logger.debug("Step processing complete. Current monitored keys: {}", currentMonitoredValues.keySet());
 
-                    } else {
+                    // } 
                         // Not all variables are ready, wait briefly before checking again
-                        try {
-                            Thread.sleep(50); 
-                        } catch (InterruptedException e) {
-                            logger.warn("Main loop sleep interrupted.");
-                            Thread.currentThread().interrupt(); 
-                        }
-                    }
+                        // try {
+                        //     Thread.sleep(50); 
+                        // } catch (InterruptedException e) {
+                        //     logger.warn("Main loop sleep interrupted.");
+                        //     Thread.currentThread().interrupt(); 
+                        // }
+                    // }
                 } // End while loop
 
                 logger.info("Main loop interrupted. Shutting down.");
@@ -258,31 +303,29 @@ public class zeroMQW {
         } catch (Exception e) {
             logger.fatal("CRITICAL ERROR in run loop: {}", e.getMessage(), e);
         } finally {
-            logger.info("zeroMQW run method finished.");
+            logger.info("zeroMQW run method finished for {}.", CONFIG_FILE_PATH);
         }
     }
 
+    // The main method is removed as execution starts from the constructor.
+    // The Starter class should be used as the main entry point.
+    /*
     public static void main(String[] args) {
         logger.info("Starting zeroMQW application...");
         zeroMQW wrapper = new zeroMQW("/zmq_config.properties");
 
-        try {
-            // Configuration section
-            Properties config = wrapper.loadConfig();
-    
-    
-            String modelPath = config.getProperty(RUNTIME_MODEL_PATH);
-            String pubAddress = config.getProperty(ZMQ_PUB_SOCKET);
-            String subConnectAddresses = config.getProperty(ZMQ_SUB_CONNECT_ADDRESSES);
-    
-            int asmId = wrapper.initializeAsm(modelPath);
-    
-            wrapper.run(asmId, pubAddress, subConnectAddresses);
-            logger.info("zeroMQW application finished.");  
-        } catch (Exception e) {
-            logger.error("There was a problem running the zeroMQW: {}", e.getMessage());
-        }
-        
+        // Logic moved to constructor and run() method started in a thread.
+        // No further action needed here unless for standalone testing,
+        // but the primary execution flow is now via object instantiation.
 
+        // Keep the main thread alive if needed for the application,
+        // though typically the run() thread will keep the JVM alive.
+        // try {
+        //     Thread.currentThread().join(); // Example: wait indefinitely
+        // } catch (InterruptedException e) {
+        //     Thread.currentThread().interrupt();
+        //     logger.info("Main thread interrupted.");
+        // }
     }
+    */
 }

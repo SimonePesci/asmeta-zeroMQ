@@ -6,12 +6,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
 import com.google.gson.Gson;
 
-@SpringBootTest(classes=AsmetaZeromqApplication.class)
+@SpringBootTest(classes=zeroMQWrapperFinal.class)
 class AsmetaZeromqApplicationTests {
 
 	private final Gson gson = new Gson();
@@ -19,75 +20,41 @@ class AsmetaZeromqApplicationTests {
 	@Test
 	void testRunningModelsAction() {
 		try (ZContext context = new ZContext()) {
-			// request in json format
-			// String requestJson = gson.toJson(Map.of("action", "start", "name", "LIFT.asm"));
-			// String requestJson = gson.toJson(Map.of("action", "start", "name", "railroadGate.asm"));
-			// String requestJson = gson.toJson(Map.of("action", "start", "name", "producer.asm"));
-			// String requestJson = gson.toJson(Map.of("action", "running-models"));
-			ZMQ.Socket publisher = context.createSocket(ZMQ.PUB);
-            publisher.connect("tcp://localhost:5559");
+			ZMQ.Socket triggerPublisher = context.createSocket(SocketType.PUB);
+			String triggerPubAddress = "tcp://*:5562";
+			triggerPublisher.bind(triggerPubAddress);
+			System.out.println("Test Trigger PUB socket bound to " + triggerPubAddress);
 
-            // Create SUB socket for receiving responses
-            ZMQ.Socket subscriber = context.createSocket(ZMQ.SUB);
-            subscriber.connect("tcp://localhost:5556");
-            subscriber.subscribe("".getBytes(ZMQ.CHARSET)); // Subscribe to all messages
-			// ZMQ.Socket subscriber = context.createSocket(ZMQ.SUB);
-            // subscriber.connect("tcp://localhost:5555");
-            // subscriber.subscribe("".getBytes(ZMQ.CHARSET)); // Subscribe to all messages
+			ZMQ.Socket responseSubscriber = context.createSocket(SocketType.SUB);
+			String responseSubAddress = "tcp://localhost:5556";
+			responseSubscriber.connect(responseSubAddress);
+			responseSubscriber.subscribe("".getBytes(ZMQ.CHARSET));
+			System.out.println("Test Response SUB socket connected to " + responseSubAddress);
 
-            // // Create SUB socket for receiving responses
-            // ZMQ.Socket publisher = context.createSocket(ZMQ.PUB);
-            // publisher.connect("tcp://localhost:5556");
-            // Can subscribe to specific messages
-            // subscriber.subscribe("model-list".getBytes(ZMQ.CHARSET));
+			System.out.println("Waiting for connections...");
+			Thread.sleep(2000);
 
-            // Wait for the connection
-            Thread.sleep(2000);
+			Map<String, String> monitored = new HashMap<>();
+			monitored.put("trigger", "1");
+			String jsonMessage = gson.toJson(monitored);
 
-            // Request in JSON format
-            // String requestJson = gson.toJson(Map.of("action", "model-list"));
-            
-            // Map<String, String> monitoredVars = new HashMap<>();
-            // monitoredVars.put("lightMon", "OFF");
-            // monitoredVars.put("gateMon", "OPENED");
-            // monitoredVars.put("event", "GATE");
-            // String requestJson = gson.toJson(Map.of(
-            //     "action", "step", 
-            //     "id", 1, 
-            //     "monitoredVariables", monitoredVars
-            // ));
-            
-            // Trigger msg
-            Map<String, String> monitored = new HashMap<>();
-            monitored.put("trigger", "1");
-            monitored.put("incomingStatus", "HELLO_WORLD");
-            monitored.put("input1", "1");
-            monitored.put("input2", "15");
-            monitored.put("reqOp(SUM)", "true");
-            String jsonMessage = gson.toJson(monitored);
+			System.out.println("Sending trigger: " + jsonMessage);
+			triggerPublisher.send(jsonMessage);
 
-            publisher.send(jsonMessage);
-            System.out.println("Sent: " + jsonMessage);
-            
-            // Send the request
-            // publisher.send(requestJson);
-            // System.out.println("Sent request: " + requestJson);
+			System.out.println("Waiting for response...");
+			String respJson = responseSubscriber.recvStr();
+			System.out.println("Received response: " + respJson);
+			Map<?, ?> response = gson.fromJson(respJson, Map.class);
 
-            // Wait for and receive response
-            String respJson = subscriber.recvStr();
-            System.out.println("Received response: " + respJson);
-            Map<?, ?> response = gson.fromJson(respJson, Map.class);
+			assertTrue(response.containsKey("outputValues") || response.containsKey("asm_status"));
 
-            // Verify response
-            // assertTrue(response.containsKey("models"));
+			triggerPublisher.close();
+			responseSubscriber.close();
 
-			// assertTrue(response.containsKey("id"));
-			// assertTrue(response.containsKey("models"));
-			// assertTrue(response.containsKey("runOutput"));
-			// assertTrue(response.containsKey("monitored"));
-			assertTrue(response.containsKey("outputValues"));
 		} catch (Exception e) {
+			System.err.println("Test failed with exception:");
 			e.printStackTrace();
+			assertTrue(false, "Test threw an exception: " + e.getMessage());
 		}
 	}
 

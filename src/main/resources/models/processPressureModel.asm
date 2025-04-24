@@ -9,7 +9,7 @@ signature:
     dynamic monitored peep: Real
     dynamic monitored simTime: Real
 
-    dynamic controlled pressure: Real
+    dynamic out pressure: Real
 
 definitions:
 
