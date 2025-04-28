@@ -77,11 +77,8 @@ public class zeroMQW {
 
         } catch (IOException | NullPointerException e) {
             logger.fatal("CRITICAL ERROR during zeroMQW initialization for {}: {}", config_filepath, e.getMessage(), e);
-            // Depending on requirements, you might want to throw a custom runtime exception here
-            // throw new RuntimeException("Failed to initialize zeroMQW for " + config_filepath, e);
         } catch (Exception e) { // Catch exception from initializeAsm
              logger.fatal("CRITICAL ERROR during ASM initialization for {}: {}", config_filepath, e.getMessage(), e);
-             // throw new RuntimeException("Failed to initialize ASM for " + config_filepath, e);
         }
     }
 
@@ -98,13 +95,10 @@ public class zeroMQW {
             logger.debug("Properties loaded from file.");
 
             // Check for essential properties
-            if(properties.getProperty(RUNTIME_MODEL_PATH) == null || properties.getProperty(ZMQ_PUB_SOCKET) == null
-            //  || properties.getProperty(ZMQ_SUB_CONNECT_ADDRESSES) == null
-             ){
+            if(properties.getProperty(RUNTIME_MODEL_PATH) == null || properties.getProperty(ZMQ_PUB_SOCKET) == null){
                 String missing = "";
                 if (properties.getProperty(RUNTIME_MODEL_PATH) == null) missing += RUNTIME_MODEL_PATH + " ";
                 if (properties.getProperty(ZMQ_PUB_SOCKET) == null) missing += ZMQ_PUB_SOCKET + " ";
-                // if (properties.getProperty(ZMQ_SUB_CONNECT_ADDRESSES) == null) missing += ZMQ_SUB_CONNECT_ADDRESSES + " ";
                 logger.error("Essential configuration parameters missing: {}", missing.trim());
                 throw new NullPointerException("ERROR Essential parameters missing: " + missing.trim() + ", closing...");
             }
@@ -154,12 +148,15 @@ public class zeroMQW {
     private void initializeZmqSockets(ZContext context, String pubBindAddress, String subConnectAddressesString) {
         logger.info("Initializing ZeroMQ sockets...");
 
+        // Create publisher socket
         publisher = context.createSocket(SocketType.PUB);
         publisher.bind(pubBindAddress);
         logger.info("PUB Socket bound to Address: {}", pubBindAddress);
 
+        // Create subscriber socket
         subscriber = context.createSocket(SocketType.SUB);
-        
+
+        // Split the addresses string into an array (from the config file)
         String[] subAddresses = subConnectAddressesString.split(",");
         logger.info("Attempting to connect SUB socket to {} address(es)...", subAddresses.length);
         for (String addr : subAddresses) {
@@ -182,47 +179,28 @@ public class zeroMQW {
 
     // Handle data received -> updates input variables (monitored)
     private void handleSubscriptionMessages() {
-        String message = subscriber.recvStr(ZMQ.DONTWAIT);
-        if (message != null){
+        String message;
+        // 'While' processes multiple messages in the same loop (checking only 'message' would skip other values if any)
+        while ((message = subscriber.recvStr(ZMQ.DONTWAIT)) != null) {
             message = message.trim();
             logger.debug("Received message on SUB socket: {}", message);
             try {
-                // Parse the message
                 Map<String, String> receivedData = gson.fromJson(message, mapStringStringType);
-
                 if (receivedData != null) {
-                    // Update current values, overwriting existing keys if present
                     currentMonitoredValues.putAll(receivedData);
-                    logger.debug("Updated monitored values map, currently contains keys: {}", currentMonitoredValues.keySet());
+                    logger.trace("Monitored now: {}", currentMonitoredValues);
                 } else {
-                    logger.warn("Parsed JSON message resulted in null data object. Original message: '{}'", message);
+                    logger.warn("Parsed JSON was null, msg='{}'", message);
                 }
-            } catch (com.google.gson.JsonSyntaxException e) {
-                logger.error("ERROR: Failed to parse received message as JSON: {}. Message: '{}'", e.getMessage(), message);
             } catch (Exception e) {
-                // Catch other potential exceptions during parsing/update
-                logger.error("ERROR: Exception processing received message: {}", e.getMessage(), e);
+                logger.error("Failed to parse incoming JSON: {}", e.getMessage());
             }
         }
-        // No message received, just continue the loop
-    }
-
-    // Checks if variables are ready to be sent (all required vars are present)
-    private boolean areAllVarsReady() {
-        if (requiredMonitored.isEmpty()) {
-            // If no variables are monitored, we are always ready to step
-            return true;
-        }
-        // Check if the keys in the current values contain all required keys
-        boolean ready = currentMonitoredValues.keySet().containsAll(requiredMonitored);
-        if (!ready) {
-             logger.trace("Waiting for required monitored vars. Have: {}, Need: {}", currentMonitoredValues.keySet(), requiredMonitored);
-        }
-        return ready;
     }
 
     // Prepare and publish the output from the ASM step
     private void handlePublisherMessages(RunOutput output) {
+        // Build the response with the output values and the ASM status
         Map<String, Object> response = new HashMap<>();    
         response.putAll(output.getOutvalues());
         response.put("asm_status", output.getEsit().toString());
@@ -230,14 +208,16 @@ public class zeroMQW {
         String jsonResponse = gson.toJson(response);
         logger.info("Publishing output: {}", jsonResponse);
 
+        // Send the response to the publisher socket
         publisher.send(jsonResponse);
     }
 
+    // Handle UNSAFE state
     private void handleUnsafeState(Map<String, String> monitoredForStep) {
         logger.error("ASM state is UNSAFE after step with input: {}", monitoredForStep);
     }
 
-    // Modified run method - no longer takes parameters
+    
     private void run() {
         try {
             logger.info("Starting zeroMQW run loop for config {}...", CONFIG_FILE_PATH);
@@ -252,48 +232,35 @@ public class zeroMQW {
                     // 1. Handle listen section
                     handleSubscriptionMessages();
 
-                    // 2. Check if ready for a step
-                    // if (areAllVarsReady()) {
-                        logger.info("All required monitored vars received and non-null ({}), proceeding with ASM step.", requiredMonitored);
+                    logger.info("All required monitored vars received and non-null ({}), proceeding with ASM step.", requiredMonitored);
 
-                        // Prepare input for this step - Create a copy for safety
-                        Map<String, String> monitoredForStep = new HashMap<>();
-                        for (String key : requiredMonitored) {
-                            // We know the key exists and is not null because of areAllVarsReady()
-                            monitoredForStep.put(key, currentMonitoredValues.get(key));
-                        }
-                        logger.debug("Executing ASM step with monitored input: {}", monitoredForStep);
+                    // 2. Prepare input for this step 
+                    Map<String, String> monitoredForStep = new HashMap<>();
+                    for (String key : requiredMonitored) {
+                        monitoredForStep.put(key, currentMonitoredValues.get(key));
+                    }
+                    logger.debug("Executing ASM step with monitored input: {}", monitoredForStep);
 
-                        RunOutput output;
-                        // Synchronize the call to runStep to prevent concurrent access issues
-                        synchronized (ASMETA_LOCK) {
-                            logger.trace("Acquired ASMETA_LOCK for runStep (Thread: {})", Thread.currentThread().getName());
-                            // 3. Run a step
-                            // Use instance variable for asmId
-                            output = sim.runStep(this.asmId, monitoredForStep);
-                            logger.trace("Released ASMETA_LOCK after runStep (Thread: {})", Thread.currentThread().getName());
-                        } // End synchronized block
+                    RunOutput output;
+                    // Synchronize the call to runStep to prevent concurrent access issues
+                    synchronized (ASMETA_LOCK) {
+                        logger.trace("Acquired ASMETA_LOCK for runStep (Thread: {})", Thread.currentThread().getName());
+                        // 3. Run a step
+                        output = sim.runStep(this.asmId, monitoredForStep);
+                        logger.trace("Released ASMETA_LOCK after runStep (Thread: {})", Thread.currentThread().getName());
+                    } // End synchronized block
 
-                        // 4. Process result and publish
-                        if (output.getEsit() == Esit.SAFE){
-                            logger.info("ASM step completed successfully (SAFE). Output: {}", output.getOutvalues());
-                            handlePublisherMessages(output);
-                        } else {
+                    // 4. Process result and publish
+                    if (output.getEsit() == Esit.SAFE){
+                        logger.info("ASM step completed successfully (SAFE). Output: {}", output.getOutvalues());
+                        handlePublisherMessages(output);
+                    } else {
+                        handleUnsafeState(monitoredForStep);                       
+                    }
 
-                            handleUnsafeState(monitoredForStep);                       
-                        }
+                    logger.debug("Step processing complete. Current monitored keys: {}", currentMonitoredValues.keySet());
 
-                        logger.debug("Step processing complete. Current monitored keys: {}", currentMonitoredValues.keySet());
-
-                    // } 
-                        // Not all variables are ready, wait briefly before checking again
-                        // try {
-                        //     Thread.sleep(50); 
-                        // } catch (InterruptedException e) {
-                        //     logger.warn("Main loop sleep interrupted.");
-                        //     Thread.currentThread().interrupt(); 
-                        // }
-                    // }
+                    
                 } // End while loop
 
                 logger.info("Main loop interrupted. Shutting down.");
@@ -307,25 +274,4 @@ public class zeroMQW {
         }
     }
 
-    // The main method is removed as execution starts from the constructor.
-    // The Starter class should be used as the main entry point.
-    /*
-    public static void main(String[] args) {
-        logger.info("Starting zeroMQW application...");
-        zeroMQW wrapper = new zeroMQW("/zmq_config.properties");
-
-        // Logic moved to constructor and run() method started in a thread.
-        // No further action needed here unless for standalone testing,
-        // but the primary execution flow is now via object instantiation.
-
-        // Keep the main thread alive if needed for the application,
-        // though typically the run() thread will keep the JVM alive.
-        // try {
-        //     Thread.currentThread().join(); // Example: wait indefinitely
-        // } catch (InterruptedException e) {
-        //     Thread.currentThread().interrupt();
-        //     logger.info("Main thread interrupted.");
-        // }
-    }
-    */
 }
