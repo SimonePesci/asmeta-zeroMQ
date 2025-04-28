@@ -21,7 +21,8 @@ class AsmetaZeromqApplicationTests {
 	void testRunningModelsAction() {
 		try (ZContext context = new ZContext()) {
 			ZMQ.Socket triggerPublisher = context.createSocket(SocketType.PUB);
-			String triggerPubAddress = "tcp://*:5562";
+			// String triggerPubAddress = "tcp://*:5562";
+			String triggerPubAddress = "tcp://*:5554";
 			triggerPublisher.bind(triggerPubAddress);
 			System.out.println("Test Trigger PUB socket bound to " + triggerPubAddress);
 
@@ -36,6 +37,7 @@ class AsmetaZeromqApplicationTests {
 
 			Map<String, String> monitored = new HashMap<>();
 			monitored.put("trigger", "1");
+			monitored.put("myinput", "1");
 			String jsonMessage = gson.toJson(monitored);
 
 			System.out.println("Sending trigger: " + jsonMessage);
