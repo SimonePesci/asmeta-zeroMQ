@@ -12,7 +12,7 @@ import org.zeromq.ZMQ;
 
 import com.google.gson.Gson;
 
-@SpringBootTest(classes=zeroMQWrapperFinal.class)
+@SpringBootTest(classes=zeroMQW.class)
 class AsmetaZeromqApplicationTests {
 
 	private final Gson gson = new Gson();
@@ -22,7 +22,7 @@ class AsmetaZeromqApplicationTests {
 		try (ZContext context = new ZContext()) {
 			ZMQ.Socket triggerPublisher = context.createSocket(SocketType.PUB);
 			// String triggerPubAddress = "tcp://*:5562";
-			String triggerPubAddress = "tcp://*:5554";
+			String triggerPubAddress = "tcp://*:5559";
 			triggerPublisher.bind(triggerPubAddress);
 			System.out.println("Test Trigger PUB socket bound to " + triggerPubAddress);
 

@@ -7,9 +7,8 @@ import java.util.Map; // Not used directly, but Timeout uses it implicitly
 import static org.junit.jupiter.api.Assertions.assertEquals; // Not used directly, but Timeout uses it implicitly
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test; // Import Timeout
-import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout; // Import Timeout
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -38,18 +37,6 @@ class AsmetaFacExampleTest {
     private final Gson gson = new Gson();
     private final Type mapStringStringType = new TypeToken<Map<String, String>>(){}.getType();
 
-    @BeforeAll
-    static void checkEnvironment() {
-        // This is just a placeholder reminder.
-        // Ensure the Starter application or individual wrappers are running before executing tests.
-        System.out.println("---------------------------------------------------------------------");
-        System.out.println("INFO: Ensure Asmeta ZeroMQ Wrappers (Inc, Dec, Multi) are running!");
-        // *** ADDED: Reminder about the config change needed for this test ***
-        System.out.println("INFO: Ensure zmq_config_inc.properties includes subscription to " + INITIAL_DEC_TEST_PUB_ADDRESS.replace("*", "localhost"));
-        System.out.println("---------------------------------------------------------------------");
-        // Optional: Add a small delay here if starting wrappers programmatically just before tests
-        // try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-    }
 
     @Test
     @Timeout(20) // Set a timeout (e.g., 20 seconds) to prevent the test hanging indefinitely
@@ -108,11 +95,11 @@ class AsmetaFacExampleTest {
             initialDecPublisher.send(initialDecJson); // Send on 5562
 
             // --- Wait for and Validate Results ---
-            System.out.println("TEST: Waiting for expected results (funcMulti=2, funcInc=4, funcDec=5)...");
+            System.out.println("TEST: Waiting for expected results (funcMulti=2, funcInc=9, funcDec=10)...");
 
             String receivedFuncMulti = null;
             String receivedFuncInc = null;
-            String receivedFuncDec = null; // We expect the calculated value '5'
+            String receivedFuncDec = null; 
 
             long startTime = System.currentTimeMillis();
             // Max wait time slightly less than the @Timeout to allow for cleanup
@@ -128,6 +115,7 @@ class AsmetaFacExampleTest {
                     if (multiJson != null) {
                         System.out.println("TEST: Received from multiSubscriber (" + MULTI_SUB_ADDRESS + "): " + multiJson);
                         Map<String, String> multiMap = gson.fromJson(multiJson, mapStringStringType);
+                        // Expecting funcMulti to become 2 after the first cycle
                         if ("2".equals(multiMap.get("funcMulti"))) {
                              receivedFuncMulti = multiMap.get("funcMulti");
                              changed = true;
@@ -135,12 +123,13 @@ class AsmetaFacExampleTest {
                     }
                 }
 
-                // Check for funcInc=4 from asmInc
+                // Check for funcInc=9 from asmInc
                 if (receivedFuncInc == null) {
                     String incJson = incSubscriber.recvStr(ZMQ.DONTWAIT);
                     if (incJson != null) {
                         System.out.println("TEST: Received from incSubscriber (" + INC_SUB_ADDRESS + "): " + incJson);
                         Map<String, String> incMap = gson.fromJson(incJson, mapStringStringType);
+                        // Expecting funcInc to become 9 after the first cycle
                          if ("9".equals(incMap.get("funcInc"))) {
                             receivedFuncInc = incMap.get("funcInc");
                             changed = true;
@@ -148,14 +137,13 @@ class AsmetaFacExampleTest {
                     }
                 }
 
-                // Check for funcDec=5 from asmDec
+                // Check for funcDec=10 from asmDec
                  if (receivedFuncDec == null) {
                     String decJson = decSubscriber.recvStr(ZMQ.DONTWAIT);
                     if (decJson != null) {
                         System.out.println("TEST: Received from decSubscriber (" + DEC_SUB_ADDRESS + "): " + decJson);
                         Map<String, String> decMap = gson.fromJson(decJson, mapStringStringType);
-                        // We expect the calculated value '5'. The initial '0' was sent by the test
-                        // on port 5562, so we should only receive '5' here from asmDec on port 5552.
+                        // Expecting funcDec to become 10 after the first cycle
                         if ("10".equals(decMap.get("funcDec"))) {
                              receivedFuncDec = decMap.get("funcDec");
                              changed = true;
@@ -182,10 +170,10 @@ class AsmetaFacExampleTest {
             assertNotNull(receivedFuncMulti, "Did not receive funcMulti=2 within timeout.");
             assertEquals("2", receivedFuncMulti, "Expected funcMulti=2");
 
-            assertNotNull(receivedFuncInc, "Did not receive funcInc=4 within timeout.");
+            assertNotNull(receivedFuncInc, "Did not receive funcInc=9 within timeout.");
             assertEquals("9", receivedFuncInc, "Expected funcInc=9 after first cycle");
 
-            assertNotNull(receivedFuncDec, "Did not receive calculated funcDec=5 within timeout.");
+            assertNotNull(receivedFuncDec, "Did not receive calculated funcDec=10 within timeout.");
             assertEquals("10", receivedFuncDec, "Expected funcDec=10 after first cycle");
 
             System.out.println("TEST: Assertions passed.");

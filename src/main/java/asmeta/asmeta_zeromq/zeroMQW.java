@@ -21,7 +21,7 @@ import org.zeromq.ZMQ;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-public class zeroMQW {
+public class zeroMQW extends Thread {
 
     // Add a static logger instance
     private static final Logger logger = LogManager.getLogger(zeroMQW.class);
@@ -69,9 +69,10 @@ public class zeroMQW {
             this.asmId = this.initializeAsm(this.modelPath);
 
             // Start the run loop in a new thread
-            Thread runThread = new Thread(this::run); // Use method reference
-            runThread.setName("zeroMQW-RunLoop-" + config_filepath.replace("/", "-")); // Give the thread a descriptive name
-            runThread.start();
+            // Thread runThread = new Thread(this::runLoop); // Use method reference
+            // runThread.setName("zeroMQW-RunLoop-" + config_filepath.replace("/", "-")); // Name of the thread
+            // runThread.start();
+            
 
             logger.info("zeroMQW instance configured and run loop started for {}", config_filepath);
 
@@ -217,8 +218,7 @@ public class zeroMQW {
         logger.error("ASM state is UNSAFE after step with input: {}", monitoredForStep);
     }
 
-    
-    private void run() {
+    public void run() {
         try {
             logger.info("Starting zeroMQW run loop for config {}...", CONFIG_FILE_PATH);
             try (ZContext context = new ZContext()) {
@@ -243,12 +243,12 @@ public class zeroMQW {
 
                     RunOutput output;
                     // Synchronize the call to runStep to prevent concurrent access issues
-                    synchronized (ASMETA_LOCK) {
+                    // synchronized (ASMETA_LOCK) {
                         logger.trace("Acquired ASMETA_LOCK for runStep (Thread: {})", Thread.currentThread().getName());
                         // 3. Run a step
                         output = sim.runStep(this.asmId, monitoredForStep);
                         logger.trace("Released ASMETA_LOCK after runStep (Thread: {})", Thread.currentThread().getName());
-                    } // End synchronized block
+                    // } // End synchronized block
 
                     // 4. Process result and publish
                     if (output.getEsit() == Esit.SAFE){
