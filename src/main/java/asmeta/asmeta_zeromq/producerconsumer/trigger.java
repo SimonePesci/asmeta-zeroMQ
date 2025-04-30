@@ -17,12 +17,15 @@ public class trigger {
         try (ZContext context = new ZContext()) {
             ZMQ.Socket triggerPublisher = context.createSocket(SocketType.PUB);
             // String triggerPubAddress = "tcp://*:5562";
-            String triggerPubAddress = "tcp://*:5560";
+            String triggerPubAddress = "tcp://*:5562";
             triggerPublisher.bind(triggerPubAddress);
+            System.out.println("Connecting to " + triggerPubAddress);
+            Thread.sleep(2000);
+
             System.out.println("Test Trigger PUB socket bound to " + triggerPubAddress);
-            
             Map<String, String> monitored = new HashMap<>();
 			monitored.put("trigger", "1");
+            
             
             
             String jsonMessage = gson.toJson(monitored);

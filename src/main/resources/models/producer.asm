@@ -1,12 +1,11 @@
 asm producer
 
-import ../libraries/StandardLibrary
+import ./StandardLibrary
 
 signature:
     enum domain StatusDomain = {IDLE | HELLO_WORLD}
     dynamic out incomingStatus: StatusDomain
     dynamic monitored trigger: Integer
-    //dynamic controller trigger: Integer
 
 definitions:
 
@@ -19,4 +18,3 @@ definitions:
 
 default init s0:
     function incomingStatus = IDLE
-    //function trigger = 1

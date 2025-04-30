@@ -218,7 +218,19 @@ public class zeroMQW extends Thread {
         logger.error("ASM state is UNSAFE after step with input: {}", monitoredForStep);
     }
 
+    @Override
     public void run() {
+
+        while (this.asmId == 0){
+            logger.info("Waiting for ASM ID to be set...");
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                logger.error("Thread interrupted while waiting for ASM ID: {}", e.getMessage());
+                Thread.currentThread().interrupt();
+            }
+        }
+        
         try {
             logger.info("Starting zeroMQW run loop for config {}...", CONFIG_FILE_PATH);
             try (ZContext context = new ZContext()) {
@@ -228,6 +240,11 @@ public class zeroMQW extends Thread {
                 logger.info("Entering main loop for {}...", CONFIG_FILE_PATH);
                 // Start Loop
                 while (!Thread.currentThread().isInterrupted()) {
+
+                    logger.info("Sleeping for 500ms..., ID: {}", this.asmId);
+                    System.err.println("Sleeping for 500ms..., ID: " + this.asmId);
+                    Thread.sleep(1500);
+
 
                     // 1. Handle listen section
                     handleSubscriptionMessages();
