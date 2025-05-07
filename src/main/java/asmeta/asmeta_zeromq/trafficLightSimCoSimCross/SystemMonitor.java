@@ -16,7 +16,6 @@ public class SystemMonitor {
             subscriber.connect("tcp://localhost:5561"); // crossManager.asm
             subscriber.connect("tcp://localhost:5562"); // trafficlightA.asm
             subscriber.connect("tcp://localhost:5563"); // trafficlightB.asm
-            subscriber.connect("tcp://localhost:5564"); // trafficlightTram.asm
             subscriber.connect("tcp://localhost:5565"); // tram.asm
             subscriber.connect("tcp://localhost:5566"); // pedestrian.asm
 
