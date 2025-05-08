@@ -3,6 +3,8 @@ package asmeta.asmeta_zeromq;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
@@ -22,7 +24,7 @@ public class ControlRoom {
     private Type mapStringStringType;
     private Properties properties;
 
-    ZMQ.Socket subscriber;
+    private List<ZMQ.Socket> subscribers;
 
     private Properties loadConfig () throws IOException, NullPointerException {
         properties = new Properties();
@@ -30,6 +32,7 @@ public class ControlRoom {
         try (InputStream input = ControlRoom.class.getResourceAsStream(CONTROLROOM_CONFIG_PATH)){
             if ( input == null ) {
                 logger.error("No load config found at {}", CONTROLROOM_CONFIG_PATH);
+                System.out.println("No load config found at " + CONTROLROOM_CONFIG_PATH);
                 throw new IOException("Config file not found at: " + CONTROLROOM_CONFIG_PATH);
             }
             properties.load(input);
@@ -37,6 +40,7 @@ public class ControlRoom {
 
             if (properties.getProperty(listenAddress) == null) {
                 logger.error("No listen address found");
+                System.out.println("No listen address found");
                 throw new NullPointerException("No listen address found");
             }
 
@@ -56,8 +60,7 @@ public class ControlRoom {
 
     private void initializeSubSockets(ZContext context) {
         String subAddressesString = properties.getProperty(listenAddress);
-
-        subscriber = context.createSocket(SocketType.SUB);
+        subscribers = new ArrayList<>();
 
         String[] subAddresses = subAddressesString.split(",");
         for (String address : subAddresses) {
@@ -65,33 +68,38 @@ public class ControlRoom {
             logger.info("Trying to connect to: {}", trimmedAddress);
             if (!trimmedAddress.isEmpty()){
                 try {
-                    subscriber.connect(address);
-                    logger.info("Connected to address '{}''", trimmedAddress);
+                    ZMQ.Socket newSubscriber = context.createSocket(SocketType.SUB);
+                    newSubscriber.connect(trimmedAddress);
+                    logger.info("Connected to address '{}'", trimmedAddress);
+                    newSubscriber.subscribe("".getBytes(ZMQ.CHARSET));
+                    subscribers.add(newSubscriber);
+                    logger.info("Subscribed to address '{}'", trimmedAddress);
                 } catch (Exception e) {
-                    logger.error("Failed to connect to address '{}'", trimmedAddress, e.getMessage());
+                    logger.error("Failed to connect or subscribe to address '{}': {}", trimmedAddress, e.getMessage());
                 }
             }
         }
 
-        subscriber.subscribe("".getBytes(ZMQ.CHARSET));
-        logger.info("Connection phase terminated.");
+        logger.info("Connection and subscription phase terminated for all addresses.");
 
-        logger.info("ZeroMQ Socket initialization completed.");
+        logger.info("ZeroMQ Sockets initialization completed.");
     }
 
     private void handleSubscriptionMessages() {
-        String message = subscriber.recvStr(ZMQ.DONTWAIT);
-        if (message != null) {
-            message = message.trim();
-            logger.debug("A message has arrived: {}", message);
+        for (ZMQ.Socket sub : subscribers) {
+            String message = sub.recvStr(ZMQ.DONTWAIT);
+            if (message != null) {
+                message = message.trim();
+                System.out.println("A message has arrived on one of the subscriptions: " + message);
+                logger.debug("A message has arrived on one of the subscriptions: {}", message);
 
-            // try {
-            //     Map<String, String> receivedMessage = gson.fromJson(message, mapStringStringType);
-            //     logger.info(message);
+                // try {
+                //     Map<String, String> receivedMessage = gson.fromJson(message, mapStringStringType);
+                //     logger.info(message);
 
-            // } catch (Exception e) {
-            // }
-
+                // } catch (Exception e) {
+                // }
+            }
         }
     }
 
@@ -102,6 +110,7 @@ public class ControlRoom {
             initializeSubSockets(context);
 
             logger.info("Starting listening...");
+            System.out.println("Starting listening...");
 
             while(!Thread.currentThread().isInterrupted()) {
                 handleSubscriptionMessages();
@@ -113,6 +122,7 @@ public class ControlRoom {
     }
 
     public static void main(String[] args) {
+        System.out.println("Control Room started");
         logger.info("Control Room started");
         ControlRoom controlRoom = new ControlRoom();
 
@@ -120,8 +130,10 @@ public class ControlRoom {
         try {
             controlRoom.loadConfig();
         } catch (IOException e) {
+            System.out.println("There was an error processing the configuration file: " + e.getMessage());
             logger.error("There was an error processing the configuration file: " + e.getMessage());
         } catch (NullPointerException e) {
+            System.out.println("There was an error processing the addresses connection configuration: " + e.getMessage());
             logger.error("There was an error processing the addresses connection configuration: " + e.getMessage());
         }
 

@@ -68,12 +68,6 @@ public class Trigger {
             send(pubTramReq, json);
             Thread.sleep(5000);
 
-            // 5) Tram signal GO
-            msg = new HashMap<>();
-            msg.put("controllerTramSignal", "GO");
-            json = gson.toJson(msg);
-            send(pubTramSig, json);
-
             // Keep sockets open for late subscribers
             Thread.sleep(2000);
 
