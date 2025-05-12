@@ -12,7 +12,7 @@ import com.google.gson.Gson;
 public class Trigger {
 
     // Ports for external inputs
-    private static final String CONTROLLER_PORT       = "5570"; // transitionC
+    private static final String CONTROLLER_PORT      = "5570"; // transitionC
     private static final String PEDESTRIAN_PORT      = "5540"; // newPedestrianComing
     private static final String TRAM_REQUEST_PORT    = "5541"; // newTramComing
     private static final String TRAM_SIGNAL_PORT     = "5571"; // controllerTramSignal

@@ -225,7 +225,7 @@ public class zeroMQW extends Thread {
                 logger.info("Entering main loop for {}...", CONFIG_FILE_PATH);
 
                 // Start Loop
-                while (!Thread.currentThread().isInterrupted()) {
+                while ( true ) {
                     // Wait for 1.5 seconds before processing the next step
                     Thread.sleep(1500);
 
@@ -255,14 +255,7 @@ public class zeroMQW extends Thread {
                     logger.debug("Step processing complete.");
                 }
 
-                logger.info("Main loop interrupted. Shutting down.");
             }
-
-            // close sockets explicitly
-            for (ZMQ.Socket sub : subscribers) {
-                sub.close();
-            }
-            publisher.close();
 
         } catch (Exception e) {
             logger.fatal("CRITICAL ERROR in run loop: {}", e.getMessage(), e);
