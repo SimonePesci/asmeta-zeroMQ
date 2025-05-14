@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -32,9 +33,10 @@ public class zeroMQWA {
     private static final String RUNTIME_MODEL_PATH = "RUNTIME_MODEL_PATH";
     private static final String ZMQ_PUB_SOCKET = "ZMQ_PUB_SOCKET";
     private static final String ZMQ_SUB_CONNECT_ADDRESSES = "ZMQ_SUB_CONNECT_ADDRESSES";
+    private static final String ASM_ENVIRONMENT_FUNCTIONS = "ASM_ENVIRONMENT_FUNCTIONS";
+    private static final String ASM_ENVIRONMENT_ADDRESS = "ASM_ENVIRONMENT_ADDRESS";
 
     private SimulationContainer sim;
-    private ZContext context;
     private ZMQ.Socket publisher;
     private final List<ZMQ.Socket> subscribers = new ArrayList<>();
     private Properties properties;
@@ -45,6 +47,8 @@ public class zeroMQWA {
     private String pubAddress;
     private String subConnectAddresses;
 
+    private String environmentAddress;
+    private List<String> environmentFunctions;
     private Set<String> requiredMonitored;
     private Map<String, String> currentMonitoredValues;
     private Gson gson;
@@ -64,12 +68,11 @@ public class zeroMQWA {
             this.modelPath = config.getProperty(RUNTIME_MODEL_PATH);
             this.pubAddress = config.getProperty(ZMQ_PUB_SOCKET);
             this.subConnectAddresses = config.getProperty(ZMQ_SUB_CONNECT_ADDRESSES, "");
+            this.environmentFunctions = Arrays.asList(config.getProperty(ASM_ENVIRONMENT_FUNCTIONS, "").split(","));
+            this.environmentAddress = config.getProperty(ASM_ENVIRONMENT_ADDRESS);
 
             // Initialize ASM
             this.asmId = this.initializeAsm(this.modelPath);
-
-            // Initialize ZMQ context and sockets
-            this.initializeZmq();
 
             logger.info("zeroMQW instance configured successfully for {}", config_filepath);
 
@@ -132,13 +135,6 @@ public class zeroMQWA {
         return asmId;
     }
 
-    private void initializeZmq() {
-        logger.info("Initializing ZeroMQ context and sockets...");
-        this.context = new ZContext();
-        initializeZmqSockets(this.context, this.pubAddress, this.subConnectAddresses);
-        logger.info("ZeroMQ context and sockets initialized.");
-    }
-
     private void initializeZmqSockets(ZContext context, String pubBindAddress, String subConnectAddressesString) {
         logger.info("Initializing ZeroMQ sockets...");
         publisher = context.createSocket(SocketType.PUB);
@@ -162,6 +158,20 @@ public class zeroMQWA {
                 }
             }
         }
+
+        // Initialize environment socket
+        if (this.environmentAddress != null) {
+            ZMQ.Socket environmentSocket = context.createSocket(SocketType.SUB);
+            environmentSocket.connect(this.environmentAddress);
+            // Subscribe only to ASM_ENVIRONMENT_FUNCTIONS
+            for (String function : this.environmentFunctions) {
+                environmentSocket.subscribe(function.getBytes(ZMQ.CHARSET));
+            }
+            subscribers.add(environmentSocket);
+            logger.info("Environment socket connected to address {}", this.environmentAddress);
+            System.out.println("Environment socket connected to address " + this.environmentAddress);
+        }
+
         logger.info("ZeroMQ Socket initialization completed with {} SUB connections.", subscribers.size());
     }
 
@@ -171,9 +181,21 @@ public class zeroMQWA {
             ZMQ.Socket sub = subscribers.get(i);
             String message;
             while ((message = sub.recvStr(ZMQ.DONTWAIT)) != null) {
+                boolean topicReceived = false;
+                for (String function : this.environmentFunctions) {
+                    if (message.equals(function)) {
+                        System.out.println("Received message on SUB socket with topic: " + function + " on SUB socket #" + i + ": " + message);
+                        topicReceived = true;
+                        break;
+                    }
+                }
+                if (topicReceived) {
+                    break;
+                }
                 messageReceived = true;
                 message = message.trim();
                 logger.debug("Received message on SUB socket #{}: {}", i, message);
+                System.out.println("Received message on SUB socket #" + i + ": " + message);
                 try {
                     Map<String, String> receivedData = gson.fromJson(message, mapStringStringType);
                     if (receivedData != null) {
@@ -206,56 +228,83 @@ public class zeroMQWA {
     }
 
     public void run() {
-        logger.info("Starting zeroMQW run loop for {}...", CONFIG_FILE_PATH);
+        while (this.asmId == 0) {
+            logger.info("Waiting for ASM ID to be set...");
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                logger.error("Thread interrupted while waiting for ASM ID: {}", e.getMessage());
+                Thread.currentThread().interrupt();
+            }
+        }
+
         try {
+            logger.info("Starting zeroMQW run loop for config {}...", CONFIG_FILE_PATH);
+            try (ZContext context = new ZContext()) {
+                // Use instance variables for addresses
+                initializeZmqSockets(context, this.pubAddress, this.subConnectAddresses);
+                logger.info("Entering main loop for {}...", CONFIG_FILE_PATH);
 
-            Thread.sleep(1500);
+                // Start Loop
+                while ( true ) {
+                    // Wait for 1.5 seconds before processing the next step
+                    Thread.sleep(1500);
 
-            // Loop indefinitely
-            while (true) {
-                logger.trace("Starting new loop iteration for {}...", CONFIG_FILE_PATH);
+                    // 1. Handle listen section
+                    handleSubscriptionMessages();
 
-                // 1. Handle listen section (check all subscribers)
-                handleSubscriptionMessages();
+                    logger.info("All required monitored vars received and non-null ({}), proceeding with ASM step.", requiredMonitored);
 
-                // 2. Prepare input for this step
-                Map<String, String> monitoredForStep = new HashMap<>();
-                for (String key : requiredMonitored) {
-                    // Directly get value, might be null if not received yet
-                    monitoredForStep.put(key, currentMonitoredValues.get(key));
+                    // 2. Prepare input for this step 
+                    Map<String, String> monitoredForStep = new HashMap<>();
+                    for (String key : requiredMonitored) {
+
+                        // if the key is an environment function, ask the user for the value (only first time)
+                        // if (environmentFunctions.contains(key)) {
+                        //     // console add the value for that key (only first time)
+                        //     if (!currentMonitoredValues.containsKey(key)) {
+                        //         System.out.println("Type the value for key: " + key);
+                        //         String value = System.console().readLine();
+                        //         currentMonitoredValues.put(key, value);
+                        //         monitoredForStep.put(key, value);
+                        //     } else {
+                        //         monitoredForStep.put(key, currentMonitoredValues.get(key));
+                        //     }
+                        // // if the key is not an environment function, add the value to the monitoredForStep
+                        // } else {
+                            monitoredForStep.put(key, currentMonitoredValues.get(key));
+                        // }
+                    }
+                    logger.debug("Executing ASM step with monitored input: {}", monitoredForStep);
+
+                    // 3. Run a step
+                    RunOutput output = sim.runStep(this.asmId, monitoredForStep);
+
+                    // 4. Process result and publish
+                    if (output.getEsit() == Esit.SAFE) {
+                        logger.info("ASM step SAFE. Output: {}", output.getOutvalues());
+                        handlePublisherMessages(output);
+                    } else {
+                        handleUnsafeState(monitoredForStep);
+                    }
+
+                    logger.debug("Step processing complete.");
                 }
-                logger.debug("Executing ASM step with monitored input: {}", monitoredForStep);
 
-                // 3. Run a step
-                RunOutput output = sim.runStep(this.asmId, monitoredForStep);
-
-                // 4. Process result and publish
-                if (output.getEsit() == Esit.SAFE){
-                    logger.info("ASM step completed successfully (SAFE). Output: {}", output.getOutvalues());
-                    handlePublisherMessages(output);
-                } else {
-                    handleUnsafeState(monitoredForStep);
-                }
-
-                logger.debug("Step processing complete for this iteration.");
-
-            } // End while loop
+            }
 
         } catch (Exception e) {
-             // Log critical errors that might cause the loop to terminate
-            logger.fatal("CRITICAL ERROR in run loop for {}: {}", CONFIG_FILE_PATH, e.getMessage(), e);
-             // Depending on requirements, you might want to attempt recovery or ensure cleanup
+            logger.fatal("CRITICAL ERROR in run loop: {}", e.getMessage(), e);
         } finally {
-            // This part will likely not be reached in normal operation due to while(true)
-            // unless an exception occurs or the thread is interrupted.
-             logger.info("zeroMQW run loop finished for {}.", CONFIG_FILE_PATH);
-             // Consider adding resource cleanup (closing sockets/context) here if needed,
-             // although the explicit close method was removed previously.
+            logger.info("zeroMQW run method finished for {}.", CONFIG_FILE_PATH);
         }
     }
 
-    // NOTE: The ZMQ context and sockets are initialized in the constructor
-    // and are not automatically closed in this setup since the close() method was removed.
-    // External management or a separate shutdown hook might be needed for graceful resource release.
 
+
+
+
+
+
+    
 }
