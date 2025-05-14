@@ -88,7 +88,7 @@ public class zeroMQWA {
 
     private Properties loadConfig() throws IOException, NullPointerException {
         properties = new Properties();
-        try (InputStream input = zeroMQW.class.getResourceAsStream(CONFIG_FILE_PATH)) {
+        try (InputStream input = zeroMQWA.class.getResourceAsStream(CONFIG_FILE_PATH)) {
             if (input == null) {
                 logger.error("Config file not found at path: {}", CONFIG_FILE_PATH);
                 throw new IOException("Config file not found, path: " + CONFIG_FILE_PATH );
@@ -273,7 +273,7 @@ public class zeroMQWA {
                             } else {
                                 monitoredForStep.put(key, currentMonitoredValues.get(key));
                             }
-                            
+
                         // if the key is not an console input function, add the value to the monitoredForStep
                         } else {
                             monitoredForStep.put(key, currentMonitoredValues.get(key));

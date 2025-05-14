@@ -50,13 +50,23 @@ public class trigger {
 
             Thread.sleep(5000);
 
-            // Send "sharedValue" message via Publisher 2 (with topic)
+            // Send "sharedValue" message via Publisher 2 (with shared topic)
             sharedValuePublisher.sendMore("sharedValues");
             messageData.clear();
             messageData.put("sharedValue", "1");
             jsonMessage = gson.toJson(messageData);
             sharedValuePublisher.send(jsonMessage);
             System.out.println("Sent 'sharedValue' message on topic '" + "sharedValues" + "' to " + sharedValuePubAddress + ": " + jsonMessage);
+            
+            Thread.sleep(5000);
+
+            // Send "trigger" message via Publisher 2 (with trigger topic only for producer)
+            sharedValuePublisher.sendMore("trigger");
+            messageData.clear();
+            messageData.put("trigger", "4");
+            jsonMessage = gson.toJson(messageData);
+            sharedValuePublisher.send(jsonMessage);
+            System.out.println("Sent 'trigger' message on topic '" + "trigger" + "' to " + sharedValuePubAddress + ": " + jsonMessage);
 
         } catch (Exception e) {
             // Improved error reporting
