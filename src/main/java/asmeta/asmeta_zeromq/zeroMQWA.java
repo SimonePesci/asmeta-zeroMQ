@@ -35,6 +35,7 @@ public class zeroMQWA {
     private static final String ZMQ_SUB_CONNECT_ADDRESSES = "ZMQ_SUB_CONNECT_ADDRESSES";
     private static final String ASM_ENVIRONMENT_FUNCTIONS = "ASM_ENVIRONMENT_FUNCTIONS";
     private static final String ASM_ENVIRONMENT_ADDRESS = "ASM_ENVIRONMENT_ADDRESS";
+    private static final String CONSOLE_INPUT_FUNCTIONS = "CONSOLE_INPUT_FUNCTIONS";
 
     private SimulationContainer sim;
     private ZMQ.Socket publisher;
@@ -48,7 +49,8 @@ public class zeroMQWA {
     private String subConnectAddresses;
 
     private String environmentAddress;
-    private List<String> environmentFunctions;
+    private List<String> environmentTopics;
+    private List<String> consoleInputFunctions;
     private Set<String> requiredMonitored;
     private Map<String, String> currentMonitoredValues;
     private Gson gson;
@@ -68,8 +70,9 @@ public class zeroMQWA {
             this.modelPath = config.getProperty(RUNTIME_MODEL_PATH);
             this.pubAddress = config.getProperty(ZMQ_PUB_SOCKET);
             this.subConnectAddresses = config.getProperty(ZMQ_SUB_CONNECT_ADDRESSES, "");
-            this.environmentFunctions = Arrays.asList(config.getProperty(ASM_ENVIRONMENT_FUNCTIONS, "").split(","));
             this.environmentAddress = config.getProperty(ASM_ENVIRONMENT_ADDRESS);
+            this.environmentTopics = Arrays.asList(config.getProperty(ASM_ENVIRONMENT_FUNCTIONS, "").split(","));
+            this.consoleInputFunctions = Arrays.asList(config.getProperty(CONSOLE_INPUT_FUNCTIONS, "").split(","));
 
             // Initialize ASM
             this.asmId = this.initializeAsm(this.modelPath);
@@ -164,8 +167,8 @@ public class zeroMQWA {
             ZMQ.Socket environmentSocket = context.createSocket(SocketType.SUB);
             environmentSocket.connect(this.environmentAddress);
             // Subscribe only to ASM_ENVIRONMENT_FUNCTIONS
-            for (String function : this.environmentFunctions) {
-                environmentSocket.subscribe(function.getBytes(ZMQ.CHARSET));
+            for (String topic : this.environmentTopics) {
+                environmentSocket.subscribe(topic.getBytes(ZMQ.CHARSET));
             }
             subscribers.add(environmentSocket);
             logger.info("Environment socket connected to address {}", this.environmentAddress);
@@ -182,9 +185,9 @@ public class zeroMQWA {
             String message;
             while ((message = sub.recvStr(ZMQ.DONTWAIT)) != null) {
                 boolean topicReceived = false;
-                for (String function : this.environmentFunctions) {
-                    if (message.equals(function)) {
-                        System.out.println("Received message on SUB socket with topic: " + function + " on SUB socket #" + i + ": " + message);
+                for (String topic : this.environmentTopics) {
+                    if (message.equals(topic)) {
+                        System.out.println("Received message on SUB socket with topic: " + topic + " on SUB socket #" + i + ": " + message);
                         topicReceived = true;
                         break;
                     }
@@ -260,20 +263,21 @@ public class zeroMQWA {
                     for (String key : requiredMonitored) {
 
                         // if the key is an environment function, ask the user for the value (only first time)
-                        // if (environmentFunctions.contains(key)) {
-                        //     // console add the value for that key (only first time)
-                        //     if (!currentMonitoredValues.containsKey(key)) {
-                        //         System.out.println("Type the value for key: " + key);
-                        //         String value = System.console().readLine();
-                        //         currentMonitoredValues.put(key, value);
-                        //         monitoredForStep.put(key, value);
-                        //     } else {
-                        //         monitoredForStep.put(key, currentMonitoredValues.get(key));
-                        //     }
-                        // // if the key is not an environment function, add the value to the monitoredForStep
-                        // } else {
+                        if (consoleInputFunctions.contains(key)) {
+                            // console add the value for that key (only first time)
+                            if (!currentMonitoredValues.containsKey(key)) {
+                                System.out.println("Type the value for key: " + key);
+                                String value = System.console().readLine();
+                                currentMonitoredValues.put(key, value);
+                                monitoredForStep.put(key, value);
+                            } else {
+                                monitoredForStep.put(key, currentMonitoredValues.get(key));
+                            }
+                            
+                        // if the key is not an console input function, add the value to the monitoredForStep
+                        } else {
                             monitoredForStep.put(key, currentMonitoredValues.get(key));
-                        // }
+                        }
                     }
                     logger.debug("Executing ASM step with monitored input: {}", monitoredForStep);
 
