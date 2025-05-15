@@ -230,6 +230,16 @@ public class zeroMQWA {
         logger.error("ASM state is UNSAFE after step with input: {}", monitoredForStep);
     }
 
+    private boolean areEnvironmentFunctionsReady() {
+        for (String topic : this.environmentTopics) {
+            if (!currentMonitoredValues.containsKey(topic)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    
     public void run() {
         while (this.asmId == 0) {
             logger.info("Waiting for ASM ID to be set...");
@@ -251,18 +261,15 @@ public class zeroMQWA {
                 // Start Loop
                 while ( true ) {
                     // Wait for 1.5 seconds before processing the next step
-                    Thread.sleep(1500);
+                    Thread.sleep(3000);
 
                     // 1. Handle listen section
                     handleSubscriptionMessages();
-
-                    logger.info("All required monitored vars received and non-null ({}), proceeding with ASM step.", requiredMonitored);
-
+                    
                     // 2. Prepare input for this step 
                     Map<String, String> monitoredForStep = new HashMap<>();
-                    for (String key : requiredMonitored) {
-
-                        // if the key is an environment function, ask the user for the value (only first time)
+                    // if the key is an environment function, ask the user for the value (only first time)
+                    for (String key : this.requiredMonitored) {
                         if (consoleInputFunctions.contains(key)) {
                             // console add the value for that key (only first time)
                             if (!currentMonitoredValues.containsKey(key)) {
@@ -273,12 +280,19 @@ public class zeroMQWA {
                             } else {
                                 monitoredForStep.put(key, currentMonitoredValues.get(key));
                             }
-
-                        // if the key is not an console input function, add the value to the monitoredForStep
                         } else {
                             monitoredForStep.put(key, currentMonitoredValues.get(key));
                         }
                     }
+
+
+                    if (!areEnvironmentFunctionsReady()) {
+                        logger.info("Environment functions are not ready, waiting for them to be ready...");
+                        continue;
+                    }
+                
+
+                    logger.info("All required monitored vars received and non-null ({}), proceeding with ASM step.", requiredMonitored);
                     logger.debug("Executing ASM step with monitored input: {}", monitoredForStep);
 
                     // 3. Run a step
