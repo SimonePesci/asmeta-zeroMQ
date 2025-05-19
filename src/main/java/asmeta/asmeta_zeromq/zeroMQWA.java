@@ -50,7 +50,7 @@ public class zeroMQWA {
 
     private String environmentAddress;
     private List<String> environmentTopics;
-    private List<String> consoleInputFunctions;
+    private List<String> startingInputFunctions;
     private Set<String> requiredMonitored;
     private Map<String, String> currentMonitoredValues;
     private Gson gson;
@@ -72,7 +72,19 @@ public class zeroMQWA {
             this.subConnectAddresses = config.getProperty(ZMQ_SUB_CONNECT_ADDRESSES, "");
             this.environmentAddress = config.getProperty(ASM_ENVIRONMENT_ADDRESS);
             this.environmentTopics = Arrays.asList(config.getProperty(ASM_ENVIRONMENT_FUNCTIONS, "").split(","));
-            this.consoleInputFunctions = Arrays.asList(config.getProperty(CONSOLE_INPUT_FUNCTIONS, "").split(","));
+            
+            if (config.getProperty(CONSOLE_INPUT_FUNCTIONS) != null) {
+                this.startingInputFunctions = Arrays.asList(config.getProperty(CONSOLE_INPUT_FUNCTIONS, "").split(","));
+            } else {
+                this.startingInputFunctions = null;
+            }
+
+            // logger.info("Starting Input Functions Size: {}", this.startingInputFunctions.size());
+            // logger.info("Starting Input Functions: {}", this.startingInputFunctions);
+
+            // if (this.startingInputFunctions.size() % 2 != 0) {
+            //     throw new Exception("CONSOLE_INPUT_FUNCTIONS must have an even number of values (key, value pairs)");
+            // }
 
             // Initialize ASM
             this.asmId = this.initializeAsm(this.modelPath);
@@ -193,7 +205,7 @@ public class zeroMQWA {
                     }
                 }
                 if (topicReceived) {
-                    break;
+                    continue;
                 }
                 messageReceived = true;
                 message = message.trim();
@@ -230,13 +242,22 @@ public class zeroMQWA {
         logger.error("ASM state is UNSAFE after step with input: {}", monitoredForStep);
     }
 
-    private boolean areEnvironmentFunctionsReady() {
-        for (String topic : this.environmentTopics) {
-            if (!currentMonitoredValues.containsKey(topic)) {
-                return false;
-            }
+    // private boolean areEnvironmentFunctionsReady() {
+    //     for (String topic : this.environmentTopics) {
+    //         if (!currentMonitoredValues.containsKey(topic)) {
+    //             return false;
+    //         }
+    //     }
+    //     return true;
+    // }
+
+    private void initializeStartingValues() {
+        for (int i = 0; i < this.startingInputFunctions.size(); i+=2) {
+            String key = this.startingInputFunctions.get(i);
+            String value = this.startingInputFunctions.get(i+1);
+            currentMonitoredValues.put(key, value);
+            logger.info("Initialized starting value for key: {} with value: {}", key, value);
         }
-        return true;
     }
 
     
@@ -258,9 +279,17 @@ public class zeroMQWA {
                 initializeZmqSockets(context, this.pubAddress, this.subConnectAddresses);
                 logger.info("Entering main loop for {}...", CONFIG_FILE_PATH);
 
+                // Initialize starting values for the monitored variables
+                if (this.startingInputFunctions != null) {
+                    initializeStartingValues();
+                    logger.info("Starting values initialized: {}", currentMonitoredValues);
+                } else {
+                    logger.info("No starting values provided, using environment functions.");
+                }
+
                 // Start Loop
                 while ( true ) {
-                    // Wait for 1.5 seconds before processing the next step
+                    // Wait for 3 seconds before processing the next step
                     Thread.sleep(3000);
 
                     // 1. Handle listen section
@@ -268,28 +297,17 @@ public class zeroMQWA {
                     
                     // 2. Prepare input for this step 
                     Map<String, String> monitoredForStep = new HashMap<>();
-                    // if the key is an environment function, ask the user for the value (only first time)
+                    
+                    // 3. Add the required monitored vars to the monitoredForStep 
                     for (String key : this.requiredMonitored) {
-                        if (consoleInputFunctions.contains(key)) {
-                            // console add the value for that key (only first time)
-                            if (!currentMonitoredValues.containsKey(key)) {
-                                System.out.println("Type the value for key: " + key);
-                                String value = System.console().readLine();
-                                currentMonitoredValues.put(key, value);
-                                monitoredForStep.put(key, value);
-                            } else {
-                                monitoredForStep.put(key, currentMonitoredValues.get(key));
-                            }
-                        } else {
-                            monitoredForStep.put(key, currentMonitoredValues.get(key));
-                        }
+                        monitoredForStep.put(key, currentMonitoredValues.get(key));                        
                     }
 
 
-                    if (!areEnvironmentFunctionsReady()) {
-                        logger.info("Environment functions are not ready, waiting for them to be ready...");
-                        continue;
-                    }
+                    // if (!areEnvironmentFunctionsReady()) {
+                    //     logger.info("Environment functions are not ready, waiting for them to be ready...");
+                    //     continue;
+                    // }
                 
 
                     logger.info("All required monitored vars received and non-null ({}), proceeding with ASM step.", requiredMonitored);
@@ -305,7 +323,6 @@ public class zeroMQWA {
                     } else {
                         handleUnsafeState(monitoredForStep);
                     }
-
                     logger.debug("Step processing complete.");
                 }
 
@@ -317,12 +334,6 @@ public class zeroMQWA {
             logger.info("zeroMQW run method finished for {}.", CONFIG_FILE_PATH);
         }
     }
-
-
-
-
-
-
 
     
 }
