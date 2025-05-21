@@ -8,8 +8,8 @@ signature:
     dynamic controlled state: ProducerState
 
     // input: due valori da console
-    dynamic monitored consoleInputTemp: Integer
-    dynamic monitored consoleInputHR: Integer
+    dynamic monitored inputTemp: Integer
+    dynamic monitored inputHR: Integer
 
     // output: li inoltra al consumer
     dynamic out outTemp: Integer
@@ -20,17 +20,17 @@ definitions:
     main rule r_Main =
         par
             // instrada la temperatura
-            if (isUndef(consoleInputTemp)) then
+            if (isUndef(inputTemp)) then
                 outTemp := 0
             else
-                outTemp := consoleInputTemp
+                outTemp := inputTemp
             endif
 
             // instrada il battito cardiaco
-            if (isUndef(consoleInputHR)) then
+            if (isUndef(inputHR)) then
                 outHR := 0
             else
-                outHR := consoleInputHR
+                outHR := inputHR
             endif
         endpar
 
