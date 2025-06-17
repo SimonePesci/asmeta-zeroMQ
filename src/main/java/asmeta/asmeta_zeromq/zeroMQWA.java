@@ -17,6 +17,7 @@ import org.apache.logging.log4j.Logger;
 import org.asmeta.runtime_container.Esit;
 import org.asmeta.runtime_container.RunOutput;
 import org.asmeta.runtime_container.SimulationContainer;
+import org.asmeta.simulator.Environment;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -131,7 +132,7 @@ public class zeroMQWA {
 
     private int initializeAsm(String modelPath) throws Exception {
         logger.info("Initializing ASM simulation container...");
-        sim = new SimulationContainer();
+        sim = new SimulationContainer(Environment.TimeMngt.use_java_time);
         sim.init(1);
         logger.debug("Simulation container initialized.");
         logger.info("Starting ASM execution for model: {}", modelPath);
@@ -232,6 +233,9 @@ public class zeroMQWA {
     private void handlePublisherMessages(RunOutput output) {
         Map<String, Object> response = new HashMap<>();
         response.putAll(output.getOutvalues());
+        if (response.get("ventilatorType") != null) {
+            response.put("ventilatorType", "Volume");
+        }
         response.put("asm_status", output.getEsit().toString());
         String jsonResponse = gson.toJson(response);
         logger.info("Publishing output: {}", jsonResponse);
@@ -319,6 +323,8 @@ public class zeroMQWA {
                     // 4. Process result and publish
                     if (output.getEsit() == Esit.SAFE) {
                         logger.info("ASM step SAFE. Output: {}", output.getOutvalues());
+                        logger.info("ASM step SAFE. Controlled values: {}", output.getControlledvalues());
+                        
                         handlePublisherMessages(output);
                     } else {
                         handleUnsafeState(monitoredForStep);

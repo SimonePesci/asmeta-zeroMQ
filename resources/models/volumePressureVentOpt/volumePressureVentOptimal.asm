@@ -1,7 +1,7 @@
 asm volumePressureVentOptimal
  
 import StandardLibrary
-import TimeLibrary
+import TimeLibrarySimple
  
 signature:
 	
@@ -34,7 +34,7 @@ definitions:
 				ventilatorType :="Pressure"
 			endif
 			if (ventilationMode=ASV) then
-				ventilatorType :="Volume"
+				ventilatorType := "Volume"
 			endif
 		endpar
  
