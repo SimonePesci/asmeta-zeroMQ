@@ -82,31 +82,31 @@ public class environment {
                 }
 
                 if (i == 1) {
-                    pub.sendMore("Client");
+                    // pub.sendMore("Client");
                     
                     Map test = new HashMap<>();
                     test.put("message", "input");
                     test.put("ventilatorType", "Volume");
                     test.put("value", "100");
                     
-                    pub.send(gson.toJson(test));
+                    pub.send("Client " + gson.toJson(test));
                     System.out.println("Sent 100 to "  + address + " at topic Client");
                     
                 }
                 if (i == 2) {
-                    pub.sendMore("Client");
+                    // pub.sendMore("Client");
                     
                     Map test = new HashMap<>();
                     test.put("message", "input");
                     test.put("ventilatorType", "Volume");
                     test.put("value", "700");
                     
-                    pub.send(gson.toJson(test));
+                    pub.send("Client " + gson.toJson(test));
                     System.out.println("Sent 400 to "  + address + " at topic Client");
                     
                 }
                 if (i == 3) {
-                    pub.sendMore("Client");
+                    // pub.sendMore("Client");
                     
                     Map test = new HashMap<String, String>();
                     test.put("message", "input");
@@ -114,7 +114,7 @@ public class environment {
                     test.put("value", "2000");
                     
                     System.out.println("Test map " + test);
-                    pub.send(gson.toJson(test));
+                    pub.send("Client " + gson.toJson(test));
                     System.out.println("Sent 1200 to "  + address + " at topic Client");
 
                 }
